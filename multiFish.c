@@ -6,7 +6,7 @@
 
 // this is about 10^7 fishes
 // #define MAX_FISH_10_7 10000000
-#define MAX_FISH 10
+#define MAX_FISH 10000000
 #define MAX_FISH_INIT_WEIGHT 10
 #define MAX_FISH_X 100
 #define MAX_FISH_Y 100
@@ -42,7 +42,7 @@ void fishInit(struct fish *fishes, int fishNum)
     }
 }
 
-void fishSwim(struct fish *fishes, int fishNum)
+void fishesSwim(struct fish *fishes, int fishNum)
 {
 #pragma omp parallel
 #pragma omp for schedule(dynamic, 100000)
@@ -86,33 +86,54 @@ void fishSwim(struct fish *fishes, int fishNum)
     }
 }
 
-void fishEat(struct fish *fishes, int fishNum)
+void fishesEat(struct fish *fishes, int fishNum)
 {
+    // table based optimization
+    float *fishesDistance = (float *)malloc(sizeof(float) * fishNum);
+    float *fishesWeight = (float *)malloc(sizeof(float) * fishNum);
+    float *fishesDelta = (float *)malloc(sizeof(float) * fishNum);
+
+// calculate fishesDistance
 #pragma omp parallel
 #pragma omp for schedule(dynamic, 100000)
     for (int i = 0; i < fishNum; i++)
     {
-        float f = 0.0;
-#pragma omp schedule(dynamic)
-        for (int j = 0; j <= i; j++)
-        {
-            f += sqrt(pow(fishes[j].x, 2) + pow(fishes[j].y, 2));
-        }
-        fishes[i].lastDelta = f - fishes[i].lastDelta;
-        // printf("Fish %d: %.5f\n", i, fishes[i].lastDelta);
-        
+        fishesDistance[i] = sqrt(pow(fishes[i].x, 2) + pow(fishes[i].y, 2));
+    }
 
-        float max_df = 0.0;
-        for (int m = 0; m < fishNum; m++)
+// calculate fishesWeight
+#pragma omp parallel
+#pragma omp for schedule(dynamic, 100000)
+    for (int i = 0; i < fishNum; i++)
+    {
+        fishesWeight[i] = fishes[i].w;
+    }
+
+// calculate fishesDelta
+#pragma omp parallel
+#pragma omp for schedule(dynamic, 100000)
+    for (int i = 0; i < fishNum; i++)
+    {
+        fishesDelta[i] = fishesDistance[i] - fishes[i].lastDelta;
+    }
+
+    // find maximum delta
+    float maxDelta = 0.0;
+
+    for (int i = 0; i < fishNum; i++)
+    {
+        if (fishesDelta[i] > maxDelta)
         {
-            if (fishes[m].lastDelta >= max_df)
-            {
-                max_df = fishes[m].lastDelta;
-            }
+            maxDelta = fishesDelta[i];
         }
-        printf("Fish %d max_df: %.5f\n", i, max_df);
-        printf("Fish %d: %.5f\n", i, (fishes[i].lastDelta) / (max_df));
-        fishes[i].w += (fishes[i].lastDelta) / (max_df);
+    }
+
+// calculate fishesWeight
+#pragma omp parallel
+#pragma omp for schedule(dynamic, 100000)
+    for (int i = 0; i < fishNum; i++)
+    {
+        fishes[i].w = fishesWeight[i] + fishesDelta[i] / maxDelta;
     }
 }
 
@@ -145,9 +166,9 @@ void main()
     // Swim for 10 times
     for (int i = 0; i < GEN_NUM; i++)
     {
-        fishSwim(fishes, fishNum);
-        fishEat(fishes, fishNum);
+        fishesSwim(fishes, fishNum);
+        fishesEat(fishes, fishNum);
         Bari[i] = bariUpdate(fishes, fishNum);
-        printf("Bari: %.5f\n", Bari[i]);
+        printf("Bari %i: %.5f\n", i, Bari[i]);
     }
 }
